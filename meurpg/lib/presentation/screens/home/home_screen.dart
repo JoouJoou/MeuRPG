@@ -11,6 +11,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String selectedAvatar = 'avatar1.png';
+  final TextEditingController _codigoController = TextEditingController();
 
   void _selectAvatar() async {
     final avatars = [
@@ -51,9 +52,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openProfileSettings() {
-    // Aqui depois vamos navegar para a tela de configurações do perfil
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Tela de perfil em construção')),
+    );
+  }
+
+  void _entrarComCodigo() {
+    final codigo = _codigoController.text.trim();
+
+    if (codigo.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Digite um código válido.')));
+      return;
+    }
+
+    // Aqui você vai fazer a lógica para validar e entrar na mesa com o código
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Entrando na mesa com código: $codigo')),
     );
   }
 
@@ -104,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               onPressed: () {
-                // Aqui depois navegamos para criar mesa
+                // Navegar para criar uma mesa
               },
               child: const Text('Criar uma Mesa'),
             ),
@@ -120,9 +136,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               onPressed: () {
-                // Aqui depois navegamos para entrar em uma mesa
+                // Navegar para "Minhas Mesas"
               },
-              child: const Text('Entrar em uma Mesa'),
+              child: const Text('Minhas Mesas'),
+            ),
+            const SizedBox(height: 30),
+            TextField(
+              controller: _codigoController,
+              decoration: const InputDecoration(
+                labelText: 'Código da mesa',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+                textStyle: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onPressed: _entrarComCodigo,
+              child: const Text('Entrar com Código'),
             ),
           ],
         ),
