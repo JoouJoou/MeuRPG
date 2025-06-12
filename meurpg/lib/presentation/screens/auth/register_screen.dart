@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '/models/user_model.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -22,40 +23,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> register() async {
     if (_formKey.currentState!.validate()) {
       try {
-        // Criação do usuário no Firebase Authentication
         UserCredential userCredential = await FirebaseAuth.instance
             .createUserWithEmailAndPassword(
               email: emailController.text.trim(),
               password: passwordController.text.trim(),
             );
 
-        // Certifique-se de que os dados estejam como Strings, e não listas
-        final username = usernameController.text.trim();
-        final email = emailController.text.trim();
-        final phone = phoneController.text.trim();
-        final age = ageController.text.trim();
+        final uid = userCredential.user!.uid;
+        final user = UserModel(
+          uid: uid,
+          username: usernameController.text.trim(),
+          email: emailController.text.trim(),
+          phone: phoneController.text.trim(),
+          age: ageController.text.trim(),
+          createdAt: Timestamp.now(),
+        );
 
-        // Salvar informações adicionais no Firestore
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(userCredential.user!.uid)
-            .set({
-              'username': username,
-              'email': email,
-              'phone': phone,
-              'age': age,
-              'createdAt': Timestamp.now(), // Data de criação
-            });
+            .doc(uid)
+            .set(user.toMap());
 
-        // Exibir mensagem de sucesso
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Usuário registrado com sucesso!')),
         );
 
-        // Navegar de volta para a tela de login
         Navigator.pop(context);
       } catch (e) {
-        // Exibir erro caso haja algum problema no registro
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Erro ao registrar: $e')));

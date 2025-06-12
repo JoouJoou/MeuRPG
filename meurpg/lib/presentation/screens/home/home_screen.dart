@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import '/models/user_model.dart';
+import '../tables/create_table_screen.dart';
+import '../../widgets/custom_scaffold.dart';
+import '../tables/my_tables_screen.dart';
+import '../tables/search_tables_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  final String userName;
+  final UserModel user;
 
-  const HomeScreen({super.key, required this.userName});
+  const HomeScreen({super.key, required this.user});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -16,9 +21,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _selectAvatar() async {
     final avatars = [
       'avatar1.png',
-      'avatar1.png',
-      'avatar1.png',
-      'avatar1.png',
+      'avatar2.png',
+      'avatar3.png',
+      'avatar4.png',
     ];
 
     final chosen = await showDialog<String>(
@@ -27,20 +32,18 @@ class _HomeScreenState extends State<HomeScreen> {
           (context) => SimpleDialog(
             title: const Text('Escolha seu avatar'),
             children:
-                avatars
-                    .map(
-                      (avatar) => SimpleDialogOption(
-                        onPressed: () => Navigator.pop(context, avatar),
-                        child: Row(
-                          children: [
-                            Image.asset('assets/images/$avatar', width: 40),
-                            const SizedBox(width: 12),
-                            Text(avatar.split('.').first),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(),
+                avatars.map((avatar) {
+                  return SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, avatar),
+                    child: Row(
+                      children: [
+                        Image.asset('assets/images/$avatar', width: 40),
+                        const SizedBox(width: 12),
+                        Text(avatar.split('.').first),
+                      ],
+                    ),
+                  );
+                }).toList(),
           ),
     );
 
@@ -67,7 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Aqui você vai fazer a lógica para validar e entrar na mesa com o código
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Entrando na mesa com código: $codigo')),
     );
@@ -75,35 +77,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.red.shade700,
-        title: const Text('MeuRPG'),
-        actions: [
-          InkWell(
-            onTap: _openProfileSettings,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Center(
-                child: Text(
-                  widget.userName,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ),
-          InkWell(
-            onTap: _selectAvatar,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: CircleAvatar(
-                backgroundImage: AssetImage('assets/images/$selectedAvatar'),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return CustomScaffold(
+      user: widget.user,
+      selectedAvatar: selectedAvatar,
+      onAvatarTap: _selectAvatar,
+      onSettingsTap: _openProfileSettings,
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -120,7 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               onPressed: () {
-                // Navegar para criar uma mesa
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CreateTableScreen(user: widget.user),
+                  ),
+                );
               },
               child: const Text('Criar uma Mesa'),
             ),
@@ -136,9 +119,35 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               onPressed: () {
-                // Navegar para "Minhas Mesas"
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MyTablesScreen(user: widget.user),
+                  ),
+                );
               },
               child: const Text('Minhas Mesas'),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(60),
+                textStyle: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SearchTablesScreen(user: widget.user),
+                  ),
+                );
+              },
+              child: const Text('Buscar Mesas'),
             ),
             const SizedBox(height: 30),
             TextField(
