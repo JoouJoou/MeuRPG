@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '/models/user_model.dart';
+import '../sessions/scheduled_sessions_screen.dart';
+import '../sessions/session_create_screen.dart';
 
 class TableDetailsScreen extends StatefulWidget {
   final UserModel user;
@@ -130,7 +132,35 @@ class _TableDetailsScreenState extends State<TableDetailsScreen> {
         ElevatedButton.icon(
           icon: const Icon(Icons.event),
           label: const Text('Agendar Sessão'),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (_) => SessionCreateScreen(
+                      user: widget.user,
+                      tableId: tableSnapshot.id,
+                    ),
+              ),
+            );
+          },
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.calendar_today),
+          label: const Text('Ver Sessões Marcadas'),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (_) => ScheduledSessionsScreen(
+                      user: widget.user,
+                      tableId: tableSnapshot.id,
+                      creatorId: tableSnapshot['creatorId'],
+                    ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -144,7 +174,19 @@ class _TableDetailsScreenState extends State<TableDetailsScreen> {
         ElevatedButton.icon(
           icon: const Icon(Icons.event),
           label: const Text('Ver Sessões Agendadas'),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (_) => ScheduledSessionsScreen(
+                      user: widget.user,
+                      tableId: tableSnapshot.id,
+                      creatorId: tableSnapshot['creatorId'],
+                    ),
+              ),
+            );
+          },
         ),
         ElevatedButton.icon(
           icon: const Icon(Icons.exit_to_app),

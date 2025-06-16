@@ -6,7 +6,7 @@ import '/models/user_model.dart';
 
 class SearchTablesScreen extends StatefulWidget {
   final UserModel user;
-  const SearchTablesScreen({Key? key, required this.user}) : super(key: key);
+  const SearchTablesScreen({super.key, required this.user});
 
   @override
   State<SearchTablesScreen> createState() => _SearchTablesScreenState();
