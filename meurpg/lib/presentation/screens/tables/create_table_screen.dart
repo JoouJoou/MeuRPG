@@ -152,25 +152,10 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
                 options: MapOptions(
                   center: _initialMapCenter,
                   zoom: 13,
-                  onTap: (tapPos, latlng) async {
-                    _selectedLocation = latlng;
-                    List<Placemark> placemarks = await placemarkFromCoordinates(
-                      latlng.latitude,
-                      latlng.longitude,
-                    );
-                    Placemark p = placemarks.first;
-                    _streetController.text = p.street ?? '';
-                    _cityController.text =
-                        p.locality?.isNotEmpty == true
-                            ? p.locality!
-                            : (p.subAdministrativeArea?.isNotEmpty == true
-                                ? p.subAdministrativeArea!
-                                : (p.administrativeArea ?? ''));
-                    _stateController.text = p.administrativeArea ?? '';
-                    _countryController.text = p.country ?? '';
-                    _zipController.text = p.postalCode ?? '';
-                    setState(() {});
-                    Navigator.of(context).pop();
+                  onTap: (tapPos, latlng) {
+                    setState(() {
+                      _selectedLocation = latlng;
+                    });
                   },
                 ),
                 children: [
@@ -202,6 +187,45 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Cancelar'),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.check),
+                label: const Text('Confirmar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  if (_selectedLocation != null) {
+                    // 🔍 Buscar endereço a partir da coordenada
+                    final placemarks = await placemarkFromCoordinates(
+                      _selectedLocation!.latitude,
+                      _selectedLocation!.longitude,
+                    );
+                    final p = placemarks.first;
+
+                    setState(() {
+                      _streetController.text = p.street ?? '';
+                      _cityController.text =
+                          p.locality?.isNotEmpty == true
+                              ? p.locality!
+                              : (p.subAdministrativeArea?.isNotEmpty == true
+                                  ? p.subAdministrativeArea!
+                                  : (p.administrativeArea ?? ''));
+                      _stateController.text = p.administrativeArea ?? '';
+                      _countryController.text = p.country ?? '';
+                      _zipController.text = p.postalCode ?? '';
+                    });
+
+                    Navigator.of(context).pop();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Selecione um local no mapa.'),
+                      ),
+                    );
+                  }
+                },
               ),
             ],
           ),
