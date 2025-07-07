@@ -142,93 +142,96 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
 
     await showDialog(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Toque no mapa para escolher localização'),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: 300,
-              child: FlutterMap(
-                options: MapOptions(
-                  center: _initialMapCenter,
-                  zoom: 13,
-                  onTap: (tapPos, latlng) {
-                    setState(() {
-                      _selectedLocation = latlng;
-                    });
-                  },
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    subdomains: ['a', 'b', 'c'],
-                    userAgentPackageName: 'com.example.meurpg',
-                  ),
-                  if (_selectedLocation != null)
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          width: 40,
-                          height: 40,
-                          point: _selectedLocation!,
-                          child: const Icon(
-                            Icons.location_pin,
-                            size: 40,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
+      builder: (_) {
+        return StatefulBuilder(
+          builder:
+              (context, setStateDialog) => AlertDialog(
+                title: const Text('Toque no mapa para escolher localização'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  height: 300,
+                  child: FlutterMap(
+                    options: MapOptions(
+                      center: _initialMapCenter,
+                      zoom: 13,
+                      onTap: (tapPos, latlng) {
+                        setStateDialog(() {
+                          _selectedLocation = latlng;
+                        });
+                      },
                     ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        subdomains: ['a', 'b', 'c'],
+                        userAgentPackageName: 'com.example.meurpg',
+                      ),
+                      if (_selectedLocation != null)
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              width: 40,
+                              height: 40,
+                              point: _selectedLocation!,
+                              child: const Icon(
+                                Icons.location_pin,
+                                size: 40,
+                                color: Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.check),
+                    label: const Text('Confirmar'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      if (_selectedLocation != null) {
+                        final placemarks = await placemarkFromCoordinates(
+                          _selectedLocation!.latitude,
+                          _selectedLocation!.longitude,
+                        );
+                        final p = placemarks.first;
+
+                        setState(() {
+                          _streetController.text = p.street ?? '';
+                          _cityController.text =
+                              p.locality?.isNotEmpty == true
+                                  ? p.locality!
+                                  : (p.subAdministrativeArea?.isNotEmpty == true
+                                      ? p.subAdministrativeArea!
+                                      : (p.administrativeArea ?? ''));
+                          _stateController.text = p.administrativeArea ?? '';
+                          _countryController.text = p.country ?? '';
+                          _zipController.text = p.postalCode ?? '';
+                        });
+
+                        Navigator.of(context).pop();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Selecione um local no mapa.'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
                 ],
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.check),
-                label: const Text('Confirmar'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () async {
-                  if (_selectedLocation != null) {
-                    // 🔍 Buscar endereço a partir da coordenada
-                    final placemarks = await placemarkFromCoordinates(
-                      _selectedLocation!.latitude,
-                      _selectedLocation!.longitude,
-                    );
-                    final p = placemarks.first;
-
-                    setState(() {
-                      _streetController.text = p.street ?? '';
-                      _cityController.text =
-                          p.locality?.isNotEmpty == true
-                              ? p.locality!
-                              : (p.subAdministrativeArea?.isNotEmpty == true
-                                  ? p.subAdministrativeArea!
-                                  : (p.administrativeArea ?? ''));
-                      _stateController.text = p.administrativeArea ?? '';
-                      _countryController.text = p.country ?? '';
-                      _zipController.text = p.postalCode ?? '';
-                    });
-
-                    Navigator.of(context).pop();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Selecione um local no mapa.'),
-                      ),
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
+        );
+      },
     );
   }
 
