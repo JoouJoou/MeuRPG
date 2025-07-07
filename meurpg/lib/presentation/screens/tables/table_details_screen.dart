@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '/models/user_model.dart';
 import '../sessions/scheduled_sessions_screen.dart';
 import '../sessions/session_create_screen.dart';
+import 'package:flutter/services.dart';
 
 class TableDetailsScreen extends StatefulWidget {
   final UserModel user;
@@ -83,6 +84,7 @@ class _TableDetailsScreenState extends State<TableDetailsScreen> {
                     data['locationName'] ?? 'Não definido',
                   ),
                   _buildInfoRow('Vagas:', vagas.toString()),
+                  _buildJoinCodeRow(data['joinCode']),
                   const SizedBox(height: 16),
                   isCreator
                       ? _buildCreatorActions(context)
@@ -92,6 +94,42 @@ class _TableDetailsScreenState extends State<TableDetailsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildJoinCodeRow(String joinCode) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: 'Código de entrada: ',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                children: [
+                  TextSpan(
+                    text: joinCode,
+                    style: const TextStyle(fontWeight: FontWeight.normal),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy),
+            tooltip: 'Copiar código',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: joinCode));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Código copiado para a área de transferência'),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

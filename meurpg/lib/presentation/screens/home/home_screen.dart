@@ -4,6 +4,7 @@ import '../tables/create_table_screen.dart';
 import '../../widgets/custom_scaffold.dart';
 import '../tables/my_tables_screen.dart';
 import '../tables/search_tables_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeScreen extends StatefulWidget {
   final UserModel user;
@@ -60,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _entrarComCodigo() {
+  void _entrarComCodigo() async {
     final codigo = _codigoController.text.trim();
 
     if (codigo.isEmpty) {
@@ -70,9 +71,51 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Entrando na mesa com código: $codigo')),
-    );
+    try {
+      final query =
+          await FirebaseFirestore.instance
+              .collection('tables')
+              .where('joinCode', isEqualTo: codigo)
+              .limit(1)
+              .get();
+
+      if (query.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Mesa não encontrada com esse código.')),
+        );
+        return;
+      }
+
+      final mesaDoc = query.docs.first;
+      final mesaRef = mesaDoc.reference;
+
+      final players = List<String>.from(mesaDoc['players'] ?? []);
+
+      if (players.contains(widget.user.uid)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Você já está nessa mesa.')),
+        );
+        return;
+      }
+
+      // Adiciona o usuário ao array
+      await mesaRef.update({
+        'players': FieldValue.arrayUnion([widget.user.uid]),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Você entrou na mesa com sucesso!')),
+      );
+
+      // (Opcional) Vá para a tela de detalhes da mesa
+      // Navigator.push(context, MaterialPageRoute(
+      //   builder: (_) => TableDetailsScreen(user: widget.user, tableDoc: mesaDoc),
+      // ));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erro ao entrar na mesa: $e')));
+    }
   }
 
   @override
