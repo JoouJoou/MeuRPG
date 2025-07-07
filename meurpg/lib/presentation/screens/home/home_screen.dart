@@ -5,6 +5,7 @@ import '../../widgets/custom_scaffold.dart';
 import '../tables/my_tables_screen.dart';
 import '../tables/search_tables_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final UserModel user;
@@ -56,8 +57,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openProfileSettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Tela de perfil em construção')),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => ProfileScreen(
+              user: widget.user,
+              selectedAvatar: selectedAvatar,
+            ),
+      ),
     );
   }
 

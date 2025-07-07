@@ -59,8 +59,8 @@ class CustomScaffold extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Configurações'),
+              leading: const Icon(Icons.person),
+              title: const Text('Meu Perfil'),
               onTap: onSettingsTap,
             ),
             ListTile(
