@@ -8,9 +8,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:meurpg/models/user_model.dart';
-import 'package:meurpg/models/table_model.dart';
 import 'package:uuid/uuid.dart';
+
+import '/models/user_model.dart';
+import '/models/table_model.dart';
+import '/models/system_model.dart';
+import '../system/system_service.dart';
 
 class CreateTableScreen extends StatefulWidget {
   final UserModel user;
@@ -21,6 +24,7 @@ class CreateTableScreen extends StatefulWidget {
 }
 
 class _CreateTableScreenState extends State<CreateTableScreen> {
+  /* ------------------------ CONTROLLERS E VARIÁVEIS BÁSICAS ------------------------ */
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -32,57 +36,57 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
   final _zipController = TextEditingController();
   final _numberController = TextEditingController();
 
-  String _selectedSystem = 'Dungeons and Dragons';
+  /* ----------------------------- Sistemas dinâmicos ----------------------------- */
+  late final Stream<List<SystemModel>> _systemsStream;
+  String? _selectedSystemId;
+  String? _selectedSystemName;
+
   bool _isPrivate = false;
   File? _imageFile;
   String? _imageUrl;
   LatLng? _selectedLocation;
   String selectedAvatar = 'avatar1.png';
+
   final _availableAvatars = [
     'avatar1.png',
-    'avatar1.png',
-    'avatar1.png',
-    'avatar1.png',
+    'avatar2.png',
+    'avatar3.png',
+    'avatar4.png',
   ];
-  final _systems = [
-    'Dungeons and Dragons',
-    'Tormenta20',
-    'Pathfinder',
-    'F&M',
-    'Storyteller',
-    'Call of Cthulhu',
-    'GURPS',
-  ];
+
   LatLng _initialMapCenter = LatLng(-23.5505, -46.6333);
   bool _isFetchingLocation = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _systemsStream = SystemService().streamSystemsByUser(widget.user.uid);
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /*                       BUSCAR COORDENADAS PELO ENDEREÇO                     */
+  /* -------------------------------------------------------------------------- */
   Future<void> _buscarLocalizacaoPorEndereco() async {
     if (_isFetchingLocation) return;
     _isFetchingLocation = true;
 
-    final rua = _streetController.text;
-    final cidade = _cityController.text;
-    final estado = _stateController.text;
-    final pais = _countryController.text;
-    final cep = _zipController.text;
-    final number = _numberController.text;
-
-    final enderecoCompleto = '$rua, $number ,$cidade, $estado, $cep, $pais';
+    final enderecoCompleto =
+        '${_streetController.text}, ${_numberController.text}, '
+        '${_cityController.text}, ${_stateController.text}, '
+        '${_zipController.text}, ${_countryController.text}';
 
     try {
-      List<Location> locations = await locationFromAddress(enderecoCompleto);
+      final locations = await locationFromAddress(enderecoCompleto);
       if (locations.isNotEmpty) {
         final loc = locations.first;
         setState(() {
           _selectedLocation = LatLng(loc.latitude, loc.longitude);
           _initialMapCenter = _selectedLocation!;
         });
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Localização encontrada com sucesso!')),
         );
-
-        await _selectOnMap();
+        await _selectOnMap(); // abre mapa para confirmação
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Endereço não encontrado.')),
@@ -97,18 +101,21 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
     }
   }
 
+  /* -------------------------------------------------------------------------- */
+  /*                        SELEÇÃO E UPLOAD DE IMAGEM (IMGUR)                  */
+  /* -------------------------------------------------------------------------- */
   Future<void> _pickImage() async {
     final status = await Permission.photos.request();
-    if (status.isGranted) {
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (picked != null) {
-        _imageFile = File(picked.path);
-        await _uploadImageToImgur(_imageFile!);
-      }
-    } else {
+    if (!status.isGranted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Permissão para acessar fotos negada.')),
       );
+      return;
+    }
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      _imageFile = File(picked.path);
+      await _uploadImageToImgur(_imageFile!);
     }
   }
 
@@ -131,6 +138,9 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
     }
   }
 
+  /* -------------------------------------------------------------------------- */
+  /*                               SELECIONAR NO MAPA                           */
+  /* -------------------------------------------------------------------------- */
   Future<void> _selectOnMap() async {
     final status = await Permission.location.request();
     if (!status.isGranted) {
@@ -142,99 +152,32 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
 
     await showDialog(
       context: context,
-      builder: (_) {
-        return StatefulBuilder(
-          builder:
-              (context, setStateDialog) => AlertDialog(
-                title: const Text('Toque no mapa para escolher localização'),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  height: 300,
-                  child: FlutterMap(
-                    options: MapOptions(
-                      center: _initialMapCenter,
-                      zoom: 13,
-                      onTap: (tapPos, latlng) {
-                        setStateDialog(() {
-                          _selectedLocation = latlng;
-                        });
-                      },
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        subdomains: ['a', 'b', 'c'],
-                        userAgentPackageName: 'com.example.meurpg',
-                      ),
-                      if (_selectedLocation != null)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              width: 40,
-                              height: 40,
-                              point: _selectedLocation!,
-                              child: const Icon(
-                                Icons.location_pin,
-                                size: 40,
-                                color: Colors.red,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancelar'),
-                  ),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.check),
-                    label: const Text('Confirmar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () async {
-                      if (_selectedLocation != null) {
-                        final placemarks = await placemarkFromCoordinates(
-                          _selectedLocation!.latitude,
-                          _selectedLocation!.longitude,
-                        );
-                        final p = placemarks.first;
-
-                        setState(() {
-                          _streetController.text = p.street ?? '';
-                          _cityController.text =
-                              p.locality?.isNotEmpty == true
-                                  ? p.locality!
-                                  : (p.subAdministrativeArea?.isNotEmpty == true
-                                      ? p.subAdministrativeArea!
-                                      : (p.administrativeArea ?? ''));
-                          _stateController.text = p.administrativeArea ?? '';
-                          _countryController.text = p.country ?? '';
-                          _zipController.text = p.postalCode ?? '';
-                        });
-
-                        Navigator.of(context).pop();
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Selecione um local no mapa.'),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-        );
-      },
+      builder:
+          (_) => _MapDialog(
+            initialCenter: _initialMapCenter,
+            currentMarker: _selectedLocation,
+            onConfirmed: (latlng, placemark) {
+              setState(() {
+                _selectedLocation = latlng;
+                _streetController.text = placemark.street ?? '';
+                _cityController.text =
+                    placemark.locality?.isNotEmpty == true
+                        ? placemark.locality!
+                        : (placemark.subAdministrativeArea?.isNotEmpty == true
+                            ? placemark.subAdministrativeArea!
+                            : (placemark.administrativeArea ?? ''));
+                _stateController.text = placemark.administrativeArea ?? '';
+                _countryController.text = placemark.country ?? '';
+                _zipController.text = placemark.postalCode ?? '';
+              });
+            },
+          ),
     );
   }
 
+  /* -------------------------------------------------------------------------- */
+  /*                           ESCOLHER AVATAR DA MESA                          */
+  /* -------------------------------------------------------------------------- */
   Future<void> _selectAvatar() async {
     final chosen = await showDialog<String>(
       context: context,
@@ -242,33 +185,37 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
           (_) => SimpleDialog(
             title: const Text('Escolha seu avatar'),
             children:
-                _availableAvatars.map((a) {
-                  return SimpleDialogOption(
-                    onPressed: () => Navigator.pop(context, a),
-                    child: Row(
-                      children: [
-                        Image.asset('assets/images/$a', width: 40),
-                        const SizedBox(width: 12),
-                        Text(a.split('.').first),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                _availableAvatars
+                    .map(
+                      (a) => SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, a),
+                        child: Row(
+                          children: [
+                            Image.asset('assets/images/$a', width: 40),
+                            const SizedBox(width: 12),
+                            Text(a.split('.').first),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
     );
     if (chosen != null) {
-      selectedAvatar = chosen;
-      setState(() {});
+      setState(() => selectedAvatar = chosen);
     }
   }
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate() ||
         _imageUrl == null ||
-        _selectedLocation == null) {
+        _selectedLocation == null ||
+        _selectedSystemId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Preencha todos os campos e selecione imagem/local.'),
+          content: Text(
+            'Preencha todos os campos obrigatórios e selecione imagem/local.',
+          ),
         ),
       );
       return;
@@ -277,15 +224,20 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
     final id = const Uuid().v4();
     final joinCode = const Uuid().v4().substring(0, 6).toUpperCase();
 
+    // 🔹 obtém o nome do sistema a partir do cache
+
     final newTable = TableModel(
       id: id,
       name: _nameController.text.trim(),
-      system: _selectedSystem,
+      systemId: _selectedSystemId!, // salva o ID
+      systemName: _selectedSystemName ?? '',
       description: _descriptionController.text.trim(),
       imageUrl: _imageUrl!,
       maxPlayers: int.parse(_maxPlayersController.text.trim()),
       locationName:
-          '${_streetController.text}, ${_numberController.text},${_cityController.text}, ${_stateController.text}, ${_countryController.text}',
+          '${_streetController.text}, ${_numberController.text}, '
+          '${_cityController.text}, ${_stateController.text}, '
+          '${_countryController.text}',
       latitude: _selectedLocation!.latitude,
       longitude: _selectedLocation!.longitude,
       isPrivate: _isPrivate,
@@ -298,9 +250,13 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
         .collection('tables')
         .doc(id)
         .set(newTable.toMap());
+
     Navigator.pop(context);
   }
 
+  /* -------------------------------------------------------------------------- */
+  /*                                    UI                                      */
+  /* -------------------------------------------------------------------------- */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -334,27 +290,66 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                /* --------------------------- Nome da mesa --------------------------- */
                 TextFormField(
                   controller: _nameController,
                   decoration: const InputDecoration(labelText: 'Nome da Mesa'),
                   validator:
                       (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
                 ),
-                DropdownButtonFormField(
-                  decoration: const InputDecoration(labelText: 'Sistema'),
-                  value: _selectedSystem,
-                  items:
-                      _systems
-                          .map(
-                            (s) => DropdownMenuItem(value: s, child: Text(s)),
-                          )
-                          .toList(),
-                  onChanged: (String? val) {
-                    setState(() {
-                      _selectedSystem = val!;
-                    });
+                /* --------------------- Dropdown de Sistemas (Dinâmico) -------------- */
+                StreamBuilder<List<SystemModel>>(
+                  stream: _systemsStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: LinearProgressIndicator(),
+                      );
+                    }
+                    final systems = snapshot.data ?? [];
+                    if (systems.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'Você ainda não criou nenhum sistema.\n'
+                          'Crie um sistema primeiro para usá-lo aqui.',
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    }
+                    return DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        labelText: 'Sistema (selecione)',
+                      ),
+                      value: _selectedSystemId,
+                      items:
+                          systems
+                              .map(
+                                (s) => DropdownMenuItem(
+                                  value: s.id,
+                                  child: Text(s.name),
+                                ),
+                              )
+                              .toList(),
+                      validator:
+                          (v) => v == null ? 'Selecione um sistema' : null,
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedSystemId = val;
+                          _selectedSystemName =
+                              systems
+                                  .firstWhere((s) => s.id == val)
+                                  .name; // guarda o nome
+                        });
+                      },
+                    );
                   },
                 ),
+                /* ------------------ Descrição, imagem, etc. ------------------ */
                 TextFormField(
                   controller: _descriptionController,
                   decoration: const InputDecoration(labelText: 'Descrição'),
@@ -363,15 +358,7 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
                       (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
                 ),
                 const SizedBox(height: 12),
-                _imageFile != null
-                    ? Image.file(_imageFile!, height: 150)
-                    : _imageUrl != null
-                    ? Image.network(_imageUrl!, height: 150)
-                    : Container(
-                      height: 150,
-                      color: Colors.grey.shade300,
-                      child: const Center(child: Text('Sem imagem')),
-                    ),
+                _imageWidget(),
                 ElevatedButton(
                   onPressed: _pickImage,
                   child: const Text('Selecionar Imagem'),
@@ -394,13 +381,10 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
                 SwitchListTile(
                   title: const Text('Mesa Privada'),
                   value: _isPrivate,
-                  onChanged: (v) {
-                    setState(() {
-                      _isPrivate = v;
-                    });
-                  },
+                  onChanged: (v) => setState(() => _isPrivate = v),
                 ),
                 const SizedBox(height: 12),
+                /* -------------------------- Endereço ------------------------- */
                 const Text(
                   'Endereço da mesa:',
                   style: TextStyle(fontWeight: FontWeight.bold),
@@ -414,7 +398,6 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
                   decoration: const InputDecoration(labelText: 'Número'),
                   keyboardType: TextInputType.number,
                 ),
-
                 TextFormField(
                   controller: _cityController,
                   decoration: const InputDecoration(labelText: 'Cidade'),
@@ -454,6 +437,115 @@ class _CreateTableScreenState extends State<CreateTableScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /* ------------------------- Widget auxiliar imagem ------------------------- */
+  Widget _imageWidget() {
+    if (_imageFile != null) {
+      return Image.file(_imageFile!, height: 150);
+    } else if (_imageUrl != null) {
+      return Image.network(_imageUrl!, height: 150);
+    } else {
+      return Container(
+        height: 150,
+        color: Colors.grey.shade300,
+        child: const Center(child: Text('Sem imagem')),
+      );
+    }
+  }
+}
+
+/* ------------------ Diálogo customizado com mapa (privado) ------------------ */
+class _MapDialog extends StatefulWidget {
+  final LatLng initialCenter;
+  final LatLng? currentMarker;
+  final Function(LatLng, Placemark) onConfirmed;
+
+  const _MapDialog({
+    required this.initialCenter,
+    required this.currentMarker,
+    required this.onConfirmed,
+  });
+
+  @override
+  State<_MapDialog> createState() => _MapDialogState();
+}
+
+class _MapDialogState extends State<_MapDialog> {
+  LatLng? _tempLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _tempLocation = widget.currentMarker;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Toque no mapa para escolher localização'),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 300,
+        child: FlutterMap(
+          options: MapOptions(
+            center: widget.initialCenter,
+            zoom: 13,
+            onTap: (tapPos, latlng) => setState(() => _tempLocation = latlng),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              subdomains: ['a', 'b', 'c'],
+              userAgentPackageName: 'com.example.meurpg',
+            ),
+            if (_tempLocation != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 40,
+                    height: 40,
+                    point: _tempLocation!,
+                    child: const Icon(
+                      Icons.location_pin,
+                      size: 40,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.check),
+          label: const Text('Confirmar'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red.shade700,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () async {
+            if (_tempLocation == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Selecione um local no mapa.')),
+              );
+              return;
+            }
+            final placemarks = await placemarkFromCoordinates(
+              _tempLocation!.latitude,
+              _tempLocation!.longitude,
+            );
+            Navigator.of(context).pop();
+            widget.onConfirmed(_tempLocation!, placemarks.first);
+          },
+        ),
+      ],
     );
   }
 }

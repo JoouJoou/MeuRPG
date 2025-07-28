@@ -1,6 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:math';
 import 'package:geolocator/geolocator.dart';
 import '/models/user_model.dart';
 
@@ -13,24 +15,15 @@ class SearchTablesScreen extends StatefulWidget {
 }
 
 class _SearchTablesScreenState extends State<SearchTablesScreen> {
+  /* ------------------ filtros / busca ------------------ */
   String searchName = '';
-  String? selectedSystem;
-  double? userLatitude;
-  double? userLongitude;
   double maxDistanceKm = 50;
   int minVagas = 1;
 
+  /* ------------------ localização / dados ------------------ */
+  double? userLatitude;
+  double? userLongitude;
   List<QueryDocumentSnapshot> allTables = [];
-
-  final List<String> systems = [
-    'Dungeons and Dragons',
-    'Tormenta20',
-    'Pathfinder',
-    'F&M',
-    'Storyteller',
-    'Call of Cthulhu',
-    'GURPS',
-  ];
 
   @override
   void initState() {
@@ -38,6 +31,7 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
     _loadData();
   }
 
+  /* ------------------ carga inicial ------------------ */
   Future<void> _loadData() async {
     await _determinePosition();
     await _loadTables();
@@ -45,121 +39,87 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
   }
 
   Future<void> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) return;
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      print('Serviço de localização desabilitado.');
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
+    var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        print('Permissão de localização negada');
-        return;
-      }
     }
-
-    if (permission == LocationPermission.deniedForever) {
-      print('Permissão de localização negada para sempre.');
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever)
       return;
-    }
 
-    Position position = await Geolocator.getCurrentPosition(
+    final pos = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
-    setState(() {
-      userLatitude = position.latitude;
-      userLongitude = position.longitude;
-    });
+    userLatitude = pos.latitude;
+    userLongitude = pos.longitude;
   }
 
   Future<void> _loadTables() async {
-    final snapshot =
+    final snap =
         await FirebaseFirestore.instance
             .collection('tables')
             .where('isPrivate', isEqualTo: false)
             .get();
-
-    setState(() {
-      allTables = snapshot.docs;
-    });
+    allTables = snap.docs;
   }
 
-  double calculateDistanceKm(lat1, lon1, lat2, lon2) {
-    const earthRadiusKm = 6371;
-
-    double dLat = _degreesToRadians(lat2 - lat1);
-    double dLon = _degreesToRadians(lon2 - lon1);
-
-    double a =
+  /* ------------------ util distância ------------------ */
+  double _deg2rad(double d) => d * pi / 180;
+  double _distanceKm(lat1, lon1, lat2, lon2) {
+    const r = 6371;
+    final dLat = _deg2rad(lat2 - lat1);
+    final dLon = _deg2rad(lon2 - lon1);
+    final a =
         sin(dLat / 2) * sin(dLat / 2) +
-        cos(_degreesToRadians(lat1)) *
-            cos(_degreesToRadians(lat2)) *
+        cos(_deg2rad(lat1)) *
+            cos(_deg2rad(lat2)) *
             sin(dLon / 2) *
             sin(dLon / 2);
-    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-
-    return earthRadiusKm * c;
+    return r * 2 * atan2(sqrt(a), sqrt(1 - a));
   }
-
-  double _degreesToRadians(double deg) => deg * pi / 180;
 
   @override
   Widget build(BuildContext context) {
-    List<QueryDocumentSnapshot> filteredTables =
+    /* ------------------ aplica filtros ------------------ */
+    final filtered =
         allTables.where((doc) {
-          final data = doc.data()! as Map<String, dynamic>;
-          final players = List<String>.from(data['players'] ?? []);
+            final data = doc.data()! as Map<String, dynamic>;
+            final players = List<String>.from(data['players'] ?? []);
 
-          if (searchName.isNotEmpty &&
-              !data['name'].toString().toLowerCase().contains(
-                searchName.toLowerCase(),
-              )) {
-            return false;
-          }
+            if (searchName.isNotEmpty &&
+                !data['name'].toString().toLowerCase().contains(
+                  searchName.toLowerCase(),
+                ))
+              return false;
 
-          if (players.contains(widget.user.uid)) {
-            return false;
-          }
+            if (players.contains(widget.user.uid)) return false;
 
-          if (selectedSystem != null &&
-              selectedSystem!.isNotEmpty &&
-              data['system'] != selectedSystem) {
-            return false;
-          }
+            final vagas = (data['maxPlayers'] ?? 0) - players.length;
+            if (vagas < minVagas) return false;
 
-          final maxPlayers = (data['maxPlayers'] ?? 0) as int;
-          final vagas = maxPlayers - players.length;
-          if (vagas < minVagas) {
-            return false;
-          }
-
-          return true;
-        }).toList();
-
-    if (userLatitude != null && userLongitude != null) {
-      filteredTables.sort((a, b) {
-        final dataA = a.data()! as Map<String, dynamic>;
-        final dataB = b.data()! as Map<String, dynamic>;
-        double distA = calculateDistanceKm(
-          userLatitude!,
-          userLongitude!,
-          (dataA['latitude'] ?? 0),
-          (dataA['longitude'] ?? 0),
-        );
-        double distB = calculateDistanceKm(
-          userLatitude!,
-          userLongitude!,
-          (dataB['latitude'] ?? 0),
-          (dataB['longitude'] ?? 0),
-        );
-        return distA.compareTo(distB);
-      });
-    }
+            return true;
+          }).toList()
+          ..sort((a, b) {
+            if (userLatitude == null || userLongitude == null) return 0;
+            final aData = a.data()! as Map<String, dynamic>;
+            final bData = b.data()! as Map<String, dynamic>;
+            final da = _distanceKm(
+              userLatitude!,
+              userLongitude!,
+              aData['latitude'] ?? 0,
+              aData['longitude'] ?? 0,
+            );
+            final db = _distanceKm(
+              userLatitude!,
+              userLongitude!,
+              bData['latitude'] ?? 0,
+              bData['longitude'] ?? 0,
+            );
+            return da.compareTo(db);
+          });
 
     return Scaffold(
       appBar: AppBar(
@@ -170,85 +130,62 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
+            /* ---------------- busca por nome ---------------- */
             TextField(
               decoration: const InputDecoration(
                 labelText: 'Buscar pelo nome da mesa',
                 prefixIcon: Icon(Icons.search),
               ),
-              onChanged: (value) {
-                setState(() {
-                  searchName = value;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              decoration: const InputDecoration(
-                labelText: 'Filtrar por sistema',
-              ),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('Todos')),
-                ...systems.map(
-                  (sys) => DropdownMenuItem(value: sys, child: Text(sys)),
-                ),
-              ],
-              value: selectedSystem ?? '',
-              onChanged: (value) {
-                setState(() {
-                  selectedSystem = (value == '') ? null : value;
-                });
-              },
+              onChanged: (v) => setState(() => searchName = v),
             ),
             const SizedBox(height: 10),
 
+            /* ---------------- filtro vagas ---------------- */
             Row(
               children: [
                 const Text('Vagas mínimas:'),
                 const SizedBox(width: 10),
                 DropdownButton<int>(
                   value: minVagas,
-                  items:
-                      List.generate(10, (index) => index + 1)
-                          .map(
-                            (v) =>
-                                DropdownMenuItem(value: v, child: Text('$v')),
-                          )
-                          .toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      minVagas = value ?? 1;
-                    });
-                  },
+                  items: List.generate(
+                    10,
+                    (i) =>
+                        DropdownMenuItem(value: i + 1, child: Text('${i + 1}')),
+                  ),
+                  onChanged: (v) => setState(() => minVagas = v ?? 1),
                 ),
               ],
             ),
-
             const SizedBox(height: 12),
 
+            /* ---------------- lista ---------------- */
             Expanded(
               child:
-                  filteredTables.isEmpty
+                  filtered.isEmpty
                       ? const Center(child: Text('Nenhuma mesa encontrada.'))
                       : ListView.builder(
-                        itemCount: filteredTables.length,
-                        itemBuilder: (context, index) {
-                          final doc = filteredTables[index];
+                        itemCount: filtered.length,
+                        itemBuilder: (context, i) {
+                          final doc = filtered[i];
                           final data = doc.data()! as Map<String, dynamic>;
                           final players = List<String>.from(
                             data['players'] ?? [],
                           );
-                          final maxPlayers = (data['maxPlayers'] ?? 0) as int;
-                          final vagas = maxPlayers - players.length;
+                          final vagas =
+                              (data['maxPlayers'] ?? 0) - players.length;
 
                           double? distKm;
                           if (userLatitude != null && userLongitude != null) {
-                            distKm = calculateDistanceKm(
+                            distKm = _distanceKm(
                               userLatitude!,
                               userLongitude!,
-                              (data['latitude'] ?? 0),
-                              (data['longitude'] ?? 0),
+                              data['latitude'] ?? 0,
+                              data['longitude'] ?? 0,
                             );
                           }
+
+                          final sistema =
+                              data['systemName'] ?? data['system'] ?? '-';
 
                           return Card(
                             margin: const EdgeInsets.symmetric(vertical: 8),
@@ -277,7 +214,7 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        data['name'] ?? 'Nome não disponível',
+                                        data['name'] ?? '',
                                         style: const TextStyle(
                                           fontSize: 20,
                                           fontWeight: FontWeight.bold,
@@ -291,7 +228,7 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        'Sistema: ${data['system'] ?? '-'}',
+                                        'Sistema: $sistema',
                                         style: const TextStyle(
                                           fontStyle: FontStyle.italic,
                                         ),
@@ -324,18 +261,13 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
                                           ),
                                           onPressed: () async {
                                             final tableId = doc.id;
-                                            final currentPlayers =
-                                                List<String>.from(
-                                                  data['players'] ?? [],
-                                                );
-
-                                            if (currentPlayers.contains(
+                                            if (players.contains(
                                               widget.user.uid,
                                             )) {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
-                                                SnackBar(
+                                                const SnackBar(
                                                   content: Text(
                                                     'Você já está nessa mesa.',
                                                   ),
@@ -343,7 +275,6 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
                                               );
                                               return;
                                             }
-
                                             try {
                                               await FirebaseFirestore.instance
                                                   .collection('tables')
@@ -354,26 +285,22 @@ class _SearchTablesScreenState extends State<SearchTablesScreen> {
                                                           widget.user.uid,
                                                         ]),
                                                   });
-
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
-                                                SnackBar(
+                                                const SnackBar(
                                                   content: Text(
                                                     'Você entrou na mesa!',
                                                   ),
                                                 ),
                                               );
-
                                               await _loadTables();
                                             } catch (e) {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
                                                 SnackBar(
-                                                  content: Text(
-                                                    'Erro ao entrar na mesa: $e',
-                                                  ),
+                                                  content: Text('Erro: $e'),
                                                 ),
                                               );
                                             }

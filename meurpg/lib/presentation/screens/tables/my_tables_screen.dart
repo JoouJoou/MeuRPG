@@ -1,28 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '/models/user_model.dart';
 import 'package:rxdart/rxdart.dart';
+
+import '/models/user_model.dart';
 import '../tables/table_details_screen.dart';
 
 class MyTablesScreen extends StatelessWidget {
   final UserModel user;
-
   const MyTablesScreen({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
-    final userId = user.uid;
+    final uid = user.uid;
 
-    final tablesStream =
+    /* ------------------------- streams de mesas ------------------------- */
+    final joinedTables$ =
         FirebaseFirestore.instance
             .collection('tables')
-            .where('players', arrayContains: userId)
+            .where('players', arrayContains: uid)
             .snapshots();
 
-    final createdTablesStream =
+    final createdTables$ =
         FirebaseFirestore.instance
             .collection('tables')
-            .where('creatorId', isEqualTo: userId)
+            .where('creatorId', isEqualTo: uid)
             .snapshots();
 
     return Scaffold(
@@ -31,38 +32,35 @@ class MyTablesScreen extends StatelessWidget {
         backgroundColor: Colors.red.shade700,
         foregroundColor: Colors.black,
       ),
-      body: StreamBuilder(
+      body: StreamBuilder<List<QueryDocumentSnapshot>>(
         stream: Rx.combineLatest2<
           QuerySnapshot,
           QuerySnapshot,
           List<QueryDocumentSnapshot>
-        >(createdTablesStream, tablesStream, (createdSnapshot, joinedSnapshot) {
-          final createdDocs = createdSnapshot.docs;
+        >(createdTables$, joinedTables$, (created, joined) {
+          final createdDocs = created.docs;
           final joinedDocs =
-              joinedSnapshot.docs
-                  .where((doc) => doc['creatorId'] != userId)
-                  .toList();
-
+              joined.docs.where((d) => d['creatorId'] != uid).toList();
           return [...createdDocs, ...joinedDocs];
         }),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          final allDocs = snapshot.data!;
-
-          if (allDocs.isEmpty) {
+          final docs = snapshot.data!;
+          if (docs.isEmpty) {
             return const Center(
               child: Text('Você ainda não participa de nenhuma mesa.'),
             );
           }
 
           return ListView.builder(
-            itemCount: allDocs.length,
-            itemBuilder: (context, index) {
-              final doc = allDocs[index];
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final doc = docs[i];
               final creatorId = doc['creatorId'];
+              final systemLabel =
+                  doc['systemName'] ?? doc['system'] ?? 'Desconhecido';
 
               return Card(
                 margin: const EdgeInsets.all(12),
@@ -103,31 +101,30 @@ class MyTablesScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Sistema: ${doc['system']}',
+                            'Sistema: $systemLabel',
                             style: const TextStyle(fontStyle: FontStyle.italic),
                           ),
                           const SizedBox(height: 6),
-                          // Aqui vamos buscar o nome do mestre:
+                          /* -------- nome do mestre -------- */
                           FutureBuilder<DocumentSnapshot>(
                             future:
                                 FirebaseFirestore.instance
                                     .collection('users')
                                     .doc(creatorId)
                                     .get(),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
+                            builder: (context, snap) {
+                              if (snap.connectionState ==
                                   ConnectionState.waiting) {
-                                return const Text('Carregando mestre...');
+                                return const Text('Carregando mestre…');
                               }
-                              if (!snapshot.hasData || !snapshot.data!.exists) {
+                              if (!snap.hasData || !snap.data!.exists) {
                                 return const Text('Mestre não encontrado');
                               }
-                              final userData =
-                                  snapshot.data!.data() as Map<String, dynamic>;
-                              final masterName =
-                                  userData['username'] ?? 'Sem nome';
+                              final data =
+                                  snap.data!.data() as Map<String, dynamic>;
+                              final master = data['username'] ?? 'Sem nome';
                               return Text(
-                                'Mestre: $masterName',
+                                'Mestre: $master',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -138,6 +135,10 @@ class MyTablesScreen extends StatelessWidget {
                           Align(
                             alignment: Alignment.bottomRight,
                             child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                                foregroundColor: Colors.white,
+                              ),
                               onPressed: () {
                                 Navigator.push(
                                   context,
@@ -150,10 +151,6 @@ class MyTablesScreen extends StatelessWidget {
                                   ),
                                 );
                               },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red.shade700,
-                                foregroundColor: Colors.white,
-                              ),
                               child: const Text('Ver Mesa'),
                             ),
                           ),
